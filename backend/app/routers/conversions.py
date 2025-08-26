@@ -47,9 +47,9 @@ async def process_conversion(conversion_id: int, audio_path: str, output_base: s
         conversion.language = result["language"]
         conversion.status = "completed"
         
-        # Deduct credits after successful transcription
+        # Deduct credits after successful transcription (skip for admin users)
         user = db.query(models.User).filter(models.User.id == user_id).first()
-        if user and conversion.duration:
+        if user and conversion.duration and not user.is_admin:
             # Convert duration from seconds to minutes
             duration_minutes = conversion.duration / 60.0
             user.credits = max(0, user.credits - duration_minutes)
@@ -70,8 +70,8 @@ async def upload_audio(
     current_user: models.User = Depends(auth.get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    # Check if user has credits
-    if current_user.credits <= 0:
+    # Check if user has credits (skip for admin users with unlimited credits)
+    if not current_user.is_admin and current_user.credits <= 0:
         raise HTTPException(
             status_code=402, 
             detail="Insufficient credits. Please contact administrator to add more credits."

@@ -26,14 +26,14 @@ def init_database():
             print("Admin user already exists!")
             return
         
-        # Create default admin user with initial credits
+        # Create default admin user with unlimited credits (-1)
         admin_user = User(
             email="admin@example.com",
             username="admin",
             hashed_password=get_password_hash("admin"),
             is_active=True,
             is_admin=True,
-            credits=1000.0  # Admin starts with 1000 minutes
+            credits=-1.0  # Admin has unlimited credits
         )
         
         db.add(admin_user)
