@@ -1,0 +1,310 @@
+import os
+import json
+import asyncio
+from pathlib import Path
+from typing import Tuple, List, Dict, Any, Optional
+from deepgram import DeepgramClient, PrerecordedOptions
+from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from .config import settings
+
+def format_ts(sec: Optional[float]) -> str:
+    if sec is None:
+        return "—"
+    sec = max(0, float(sec))
+    m = int(sec // 60)
+    s = int(round(sec - m * 60))
+    return f"{m:02d}:{s:02d}"
+
+def response_to_dict(resp):
+    if hasattr(resp, "to_json"):
+        return json.loads(resp.to_json())
+    if isinstance(resp, (dict, list)):
+        return resp
+    raise TypeError(f"Unsupported response type: {type(resp)}")
+
+def build_turns_from_deepgram_json(d: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    meta = d.get("metadata", {})
+    chan = d.get("results", {}).get("channels", [])
+    if not chan:
+        return [], meta
+    
+    alt = chan[0].get("alternatives", [])
+    if not alt:
+        return [], meta
+    
+    words = alt[0].get("words", [])
+    turns: List[Dict[str, Any]] = []
+    if not words:
+        transcript = alt[0].get("transcript", "").strip()
+        if transcript:
+            turns.append({
+                "speaker": 0,
+                "start": None,
+                "end": None,
+                "text": transcript,
+                "avg_conf": alt[0].get("confidence"),
+            })
+        return turns, meta
+    
+    current = None
+    last_end = None
+    PAUSE_BREAK = 1.2
+    
+    for w in words:
+        spk = w.get("speaker", 0)
+        wtext = w.get("punctuated_word") or w.get("word") or ""
+        start = w.get("start")
+        end = w.get("end")
+        conf = w.get("confidence", 1.0)
+        
+        new_turn = False
+        if current is None:
+            new_turn = True
+        else:
+            if spk != current["speaker"]:
+                new_turn = True
+            elif last_end is not None and start is not None and (start - last_end) > PAUSE_BREAK:
+                new_turn = True
+        
+        if new_turn:
+            if current is not None:
+                current["end"] = last_end
+                if current["conf_count"]:
+                    current["avg_conf"] = current["conf_sum"] / current["conf_count"]
+                else:
+                    current["avg_conf"] = None
+                current["text"] = " ".join(current["text"]).replace(" ,", ",").replace(" .", ".")
+                turns.append(current)
+            
+            current = {
+                "speaker": spk if isinstance(spk, int) else 0,
+                "start": start,
+                "end": end,
+                "text": [],
+                "conf_sum": 0.0,
+                "conf_count": 0,
+            }
+        
+        if wtext:
+            if current["text"] and wtext in {".", ",", "!", "?", ";", ":"}:
+                current["text"][-1] = current["text"][-1] + wtext
+            else:
+                current["text"].append(wtext)
+        
+        if conf is not None:
+            current["conf_sum"] += float(conf)
+            current["conf_count"] += 1
+        last_end = end if end is not None else last_end
+    
+    if current is not None:
+        current["end"] = last_end
+        if current["conf_count"]:
+            current["avg_conf"] = current["conf_sum"] / current["conf_count"]
+        else:
+            current["avg_conf"] = None
+        current["text"] = " ".join(current["text"]).replace(" ,", ",").replace(" .", ".")
+        turns.append(current)
+    
+    return turns, meta
+
+def render_docx(docx_path: Path, audio_name: str, turns: List[Dict[str, Any]], meta: Dict[str, Any]) -> None:
+    doc = Document()
+    
+    title = doc.add_heading(audio_name, level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    duration = meta.get("duration")
+    channels = meta.get("channels")
+    model = None
+    mi = meta.get("model_info") or {}
+    if mi:
+        try:
+            key = next(iter(mi))
+            model = mi[key].get("name") or mi[key].get("arch")
+        except Exception:
+            pass
+    p.add_run(f"Duration: {format_ts(duration)}   •   Channels: {channels or '—'}   •   Model: {model or '—'}").italic = True
+    
+    doc.add_paragraph("")
+    
+    for t in turns:
+        spk = t["speaker"]
+        st = format_ts(t["start"])
+        en = format_ts(t["end"])
+        head = doc.add_paragraph()
+        run = head.add_run(f"Speaker {spk}  [{st}–{en}]")
+        run.bold = True
+        
+        para = doc.add_paragraph(t["text"])
+        para_format = para.paragraph_format
+        para_format.space_after = Pt(10)
+    
+    doc.add_paragraph("").add_run("Generated by Deepgram + Python").italic = True
+    
+    for style_name in ["Normal"]:
+        try:
+            style = doc.styles[style_name]
+            style.font.name = "Calibri"
+            style.font.size = Pt(11)
+        except Exception:
+            pass
+    
+    doc.save(str(docx_path))
+
+def render_pdf(pdf_path: Path, audio_name: str, turns: List[Dict[str, Any]], meta: Dict[str, Any]) -> None:
+    doc = SimpleDocTemplate(str(pdf_path), pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+    
+    styles = getSampleStyleSheet()
+    heading = ParagraphStyle(
+        "Heading",
+        parent=styles["Title"],
+        fontSize=18,
+        leading=22,
+        alignment=1
+    )
+    meta_style = ParagraphStyle(
+        "Meta",
+        parent=styles["Italic"],
+        alignment=1,
+        fontSize=10,
+    )
+    speaker_style = ParagraphStyle(
+        "Speaker",
+        parent=styles["Heading4"],
+        fontSize=12,
+        spaceBefore=8,
+        spaceAfter=2
+    )
+    text_style = ParagraphStyle(
+        "Text",
+        parent=styles["BodyText"],
+        fontSize=11,
+        leading=15,
+        spaceAfter=6
+    )
+    
+    story = []
+    story.append(Paragraph(audio_name, heading))
+    
+    duration = meta.get("duration")
+    channels = meta.get("channels")
+    model = None
+    mi = meta.get("model_info") or {}
+    if mi:
+        try:
+            key = next(iter(mi))
+            model = mi[key].get("name") or mi[key].get("arch")
+        except Exception:
+            pass
+    
+    meta_line = f"Duration: {format_ts(duration)} • Channels: {channels or '—'} • Model: {model or '—'}"
+    story.append(Paragraph(meta_line, meta_style))
+    story.append(Spacer(1, 12))
+    
+    for t in turns:
+        spk = t["speaker"]
+        st = format_ts(t["start"])
+        en = format_ts(t["end"])
+        story.append(Paragraph(f"Speaker {spk}  [{st}–{en}]", speaker_style))
+        story.append(Paragraph(t["text"], text_style))
+    
+    story.append(Spacer(1, 12))
+    story.append(Paragraph("Generated by Deepgram + Python", meta_style))
+    
+    doc.build(story)
+
+async def transcribe_and_convert(
+    audio_path: str,
+    output_base_path: str,
+    display_name: str,
+    language: Optional[str] = None,
+    model: str = "nova-3"
+) -> Dict[str, Any]:
+    """
+    Transcribe audio file and convert to multiple formats
+    Returns paths to generated files and metadata
+    """
+    if not settings.DEEPGRAM_API_KEY:
+        raise ValueError("DEEPGRAM_API_KEY not configured")
+    
+    client = DeepgramClient(settings.DEEPGRAM_API_KEY)
+    
+    # Build options - if language is None, Deepgram will auto-detect
+    options_dict = {
+        "model": model,
+        "smart_format": True,
+        "punctuate": True,
+        "paragraphs": True,
+        "diarize": True,
+    }
+    
+    # Only add language if specified (None means auto-detect)
+    if language:
+        options_dict["language"] = language
+    
+    options = PrerecordedOptions(**options_dict)
+    
+    # Transcribe the audio file
+    with open(audio_path, "rb") as audio_file:
+        source = {"buffer": audio_file, "mimetype": "audio/mpeg"}
+        response = await asyncio.to_thread(
+            client.listen.prerecorded.v("1").transcribe_file,
+            source,
+            options
+        )
+    
+    # Save JSON response
+    json_path = f"{output_base_path}.json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        raw_json = response.to_json() if hasattr(response, "to_json") else json.dumps(response, ensure_ascii=False)
+        f.write(raw_json)
+    
+    # Extract transcript for TXT file
+    data = response_to_dict(response)
+    text = ""
+    channels = data.get("results", {}).get("channels", [])
+    if channels and channels[0].get("alternatives"):
+        text = channels[0]["alternatives"][0].get("transcript", "") or ""
+    
+    # Save TXT file
+    txt_path = f"{output_base_path}.txt"
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(text)
+    
+    # Generate DOCX and PDF
+    turns, meta = build_turns_from_deepgram_json(data)
+    
+    docx_path = f"{output_base_path}.docx"
+    pdf_path = f"{output_base_path}.pdf"
+    
+    render_docx(Path(docx_path), display_name, turns, meta)
+    render_pdf(Path(pdf_path), display_name, turns, meta)
+    
+    # Get detected language if auto-detection was used
+    detected_language = language  # Default to requested language
+    if not language:
+        # Extract detected language from metadata if available
+        detected_language = data.get("results", {}).get("channels", [{}])[0].get("detected_language")
+        if not detected_language:
+            # Fallback to metadata language field
+            detected_language = meta.get("language")
+    
+    return {
+        "json_path": json_path,
+        "txt_path": txt_path,
+        "docx_path": docx_path,
+        "pdf_path": pdf_path,
+        "duration": meta.get("duration"),
+        "model_used": model,
+        "language": detected_language or language,
+    }
