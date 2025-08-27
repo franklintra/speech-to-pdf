@@ -42,6 +42,7 @@ async def create_user(
         username=user.username,
         hashed_password=hashed_password,
         is_admin=user.is_admin,
+        credits=-1.0 if user.is_admin else 0.0,  # Admin users get unlimited credits
         created_by=current_admin.id
     )
     db.add(db_user)
@@ -103,9 +104,14 @@ async def update_user(
     
     if user_update.is_admin is not None:
         user.is_admin = user_update.is_admin
+        # If user is becoming admin, set credits to -1 (unlimited)
+        if user_update.is_admin:
+            user.credits = -1.0
     
     if user_update.credits is not None:
-        user.credits = user_update.credits
+        # Don't allow changing admin credits (they should always be -1)
+        if not user.is_admin:
+            user.credits = user_update.credits
     
     db.commit()
     db.refresh(user)

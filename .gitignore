@@ -1,0 +1,114 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+*.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+app.db
+
+# Media/Upload directories
+audio/
+docs/
+pdfs/
+uploads/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+
+# Node modules (for frontend)
+node_modules/
+.next/
+out/
+.npm
+.yarn/
+
+# Environment files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Backend specific
+backend/uploads/
+backend/app.db
+backend/venv/
+backend/__pycache__/
+backend/.env
+
+# Frontend specific
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+
+# Old/Temporary conversion files
+convert.py
+*.m4a
+*.wav
+*.mp3
+*.docx
+*.pdf
+*.txt
+*.json
+
+# Keep the directories but not the files
+!uploads/.gitkeep
+!audio/.gitkeep
+!docs/.gitkeep
+!pdfs/.gitkeep
