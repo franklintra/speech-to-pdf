@@ -30,3 +30,46 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
 @router.get("/me", response_model=schemas.User)
 async def read_users_me(current_user: models.User = Depends(auth.get_current_active_user)):
     return current_user
+
+@router.post("/change-password", response_model=schemas.PasswordChangeResponse)
+async def change_password(
+    password_data: schemas.PasswordChange,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Change the password for the current user.
+    
+    Password requirements:
+    - Minimum 8 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one number
+    """
+    # Verify current password
+    if not auth.verify_password(password_data.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect"
+        )
+    
+    # Check if new password is same as current
+    if password_data.current_password == password_data.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from current password"
+        )
+    
+    # Validate new password complexity
+    is_valid, error_message = auth.validate_password_complexity(password_data.new_password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_message
+        )
+    
+    # Update password
+    current_user.hashed_password = auth.get_password_hash(password_data.new_password)
+    db.commit()
+    
+    return {"message": "Password changed successfully"}

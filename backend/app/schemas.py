@@ -34,6 +34,9 @@ class User(BaseModel):
     class Config:
         from_attributes = True
 
+class UserWithWarning(User):
+    warning: Optional[str] = None
+
 class UserListResponse(BaseModel):
     users: List[User]
     total: int
@@ -44,6 +47,13 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+class PasswordChangeResponse(BaseModel):
+    message: str
 
 class ConversionCreate(BaseModel):
     display_name: str

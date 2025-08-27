@@ -19,7 +19,7 @@ async def list_users(
     users = query.offset(skip).limit(limit).all()
     return schemas.UserListResponse(users=users, total=total)
 
-@router.post("/users", response_model=schemas.User)
+@router.post("/users", response_model=schemas.UserWithWarning)
 async def create_user(
     user: schemas.UserCreate,
     current_admin: models.User = Depends(auth.get_admin_user),
@@ -35,6 +35,12 @@ async def create_user(
     if db_user:
         raise HTTPException(status_code=400, detail="Username already taken")
     
+    # Check password complexity but don't enforce for admins
+    warning = None
+    is_valid, error_message = auth.validate_password_complexity(user.password)
+    if not is_valid:
+        warning = f"WARNING: Weak password - {error_message}. Password set anyway by admin override."
+    
     # Create new user
     hashed_password = auth.get_password_hash(user.password)
     db_user = models.User(
@@ -48,7 +54,12 @@ async def create_user(
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    return db_user
+    
+    # Create response with warning if applicable
+    response = schemas.UserWithWarning.model_validate(db_user)
+    if warning:
+        response.warning = warning
+    return response
 
 @router.get("/users/{user_id}", response_model=schemas.User)
 async def get_user(
@@ -62,7 +73,7 @@ async def get_user(
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-@router.patch("/users/{user_id}", response_model=schemas.User)
+@router.patch("/users/{user_id}", response_model=schemas.UserWithWarning)
 async def update_user(
     user_id: int,
     user_update: schemas.UserUpdate,
@@ -81,6 +92,8 @@ async def update_user(
             detail="Cannot remove your own admin privileges"
         )
     
+    warning = None
+    
     # Update fields if provided
     if user_update.email is not None:
         # Check if email is already taken
@@ -97,6 +110,10 @@ async def update_user(
         user.username = user_update.username
     
     if user_update.password is not None:
+        # Check password complexity but don't enforce for admins
+        is_valid, error_message = auth.validate_password_complexity(user_update.password)
+        if not is_valid:
+            warning = f"WARNING: Weak password - {error_message}. Password set anyway by admin override."
         user.hashed_password = auth.get_password_hash(user_update.password)
     
     if user_update.is_active is not None:
@@ -115,7 +132,12 @@ async def update_user(
     
     db.commit()
     db.refresh(user)
-    return user
+    
+    # Create response with warning if applicable
+    response = schemas.UserWithWarning.model_validate(user)
+    if warning:
+        response.warning = warning
+    return response
 
 @router.delete("/users/{user_id}")
 async def delete_user(
