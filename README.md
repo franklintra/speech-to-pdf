@@ -2,6 +2,8 @@
 
 A full-stack web application for converting audio files to PDF and Word documents with transcription using Deepgram API.
 
+![Speech to PDF Interface](assets/interface.png)
+
 ## Features
 
 - 🎤 Audio file upload (MP3, WAV, M4A, FLAC, AAC, OGG, MP4, WebM, etc.)
