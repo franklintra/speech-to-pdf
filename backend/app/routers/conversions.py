@@ -13,12 +13,20 @@ from ..config import settings
 router = APIRouter(prefix="/api/conversions", tags=["conversions"])
 
 ALLOWED_EXTENSIONS = {'.wav', '.mp3', '.m4a', '.flac', '.aac', '.ogg', '.opus', '.webm', '.mp4', '.mkv', '.mov'}
+MAX_FILENAME_LENGTH = 100  # Maximum length for filenames (without extension)
 
 def validate_file(filename: str):
     ext = Path(filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"File type {ext} not supported")
     return ext
+
+def truncate_filename(name: str, max_length: int = MAX_FILENAME_LENGTH) -> str:
+    """Truncate filename to maximum length while preserving readability"""
+    if len(name) <= max_length:
+        return name
+    # Keep first part and add ellipsis
+    return name[:max_length-3] + "..."
 
 async def process_conversion(conversion_id: int, audio_path: str, output_base: str, display_name: str, language: str, user_id: int, db: Session):
     """Background task to process audio conversion"""
@@ -328,15 +336,15 @@ async def download_file(
     if file_type == "docx":
         file_path = conversion.docx_path
         media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        filename = f"{conversion.display_name}.docx"
+        filename = f"{truncate_filename(conversion.display_name)}.docx"
     elif file_type == "pdf":
         file_path = conversion.pdf_path
         media_type = "application/pdf"
-        filename = f"{conversion.display_name}.pdf"
+        filename = f"{truncate_filename(conversion.display_name)}.pdf"
     elif file_type == "txt":
         file_path = conversion.txt_path
         media_type = "text/plain"
-        filename = f"{conversion.display_name}.txt"
+        filename = f"{truncate_filename(conversion.display_name)}.txt"
     
     if not file_path or not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"{file_type.upper()} file not found")
