@@ -42,7 +42,7 @@ async def create_user(
         username=user.username,
         hashed_password=hashed_password,
         is_admin=user.is_admin,
-        credits=-1.0 if user.is_admin else 0.0,  # Admin users get unlimited credits
+        credits=-1.0 if user.is_admin else user.credits,  # Admin users get unlimited credits, others get specified credits
         created_by=current_admin.id
     )
     db.add(db_user)

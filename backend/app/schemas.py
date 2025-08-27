@@ -7,6 +7,7 @@ class UserCreate(BaseModel):
     username: str
     password: str
     is_admin: bool = False
+    credits: Optional[float] = 60.0
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
