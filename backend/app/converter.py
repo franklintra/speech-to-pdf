@@ -239,7 +239,7 @@ async def transcribe_and_convert(
     
     client = DeepgramClient(settings.DEEPGRAM_API_KEY)
     
-    # Build options - if language is None, Deepgram will auto-detect
+    # Build options
     options_dict = {
         "model": model,
         "smart_format": True,
@@ -248,9 +248,13 @@ async def transcribe_and_convert(
         "diarize": True,
     }
     
-    # Only add language if specified (None means auto-detect)
+    # Handle language detection vs manual language selection
     if language:
+        # User specified a language
         options_dict["language"] = language
+    else:
+        # Enable auto-detection when no language is specified
+        options_dict["detect_language"] = True
     
     options = PrerecordedOptions(**options_dict)
     
@@ -274,9 +278,11 @@ async def transcribe_and_convert(
     text = ""
     channels = data.get("results", {}).get("channels", [])
     if channels and channels[0].get("alternatives"):
-        text = channels[0]["alternatives"][0].get("transcript", "") or ""
+        # Get the transcript, ensuring it's not None
+        transcript = channels[0]["alternatives"][0].get("transcript", "")
+        text = transcript if transcript else ""
     
-    # Save TXT file
+    # Save TXT file (even if empty, to maintain consistency)
     txt_path = f"{output_base_path}.txt"
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(text)
@@ -292,9 +298,9 @@ async def transcribe_and_convert(
     
     # Get detected language if auto-detection was used
     detected_language = language  # Default to requested language
-    if not language:
-        # Extract detected language from metadata if available
-        detected_language = data.get("results", {}).get("channels", [{}])[0].get("detected_language")
+    if not language and channels:
+        # Extract detected language from the first channel when auto-detection was used
+        detected_language = channels[0].get("detected_language")
         if not detected_language:
             # Fallback to metadata language field
             detected_language = meta.get("language")
