@@ -16,6 +16,9 @@ class Settings:
     
     CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
     
+    # Credits warning threshold in minutes
+    CREDITS_WARNING_THRESHOLD = float(os.getenv("CREDITS_WARNING_THRESHOLD", "10.0"))
+    
     # Create directories if they don't exist
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs(os.path.join(UPLOAD_DIR, "audio"), exist_ok=True)

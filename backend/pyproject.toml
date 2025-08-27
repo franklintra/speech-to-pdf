@@ -1,0 +1,33 @@
+[project]
+name = "speech-to-pdf-backend"
+version = "0.1.0"
+description = "Backend API for speech to PDF conversion"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.104.1",
+    "uvicorn[standard]==0.24.0",
+    "python-multipart==0.0.6",
+    "python-jose[cryptography]==3.3.0",
+    "passlib==1.7.4",
+    "bcrypt==4.0.1",
+    "sqlalchemy==2.0.23",
+    "python-dotenv==1.0.0",
+    "deepgram-sdk==3.0.0",
+    "python-docx==1.1.0",
+    "reportlab==4.0.7",
+    "aiofiles==23.2.1",
+    "alembic==1.12.1",
+    "psycopg2-binary==2.9.9",
+    "slowapi==0.1.9",
+    "pydantic[email]>=2.11.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
